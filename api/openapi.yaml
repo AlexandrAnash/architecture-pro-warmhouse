@@ -1,0 +1,280 @@
+openapi: 3.0.3
+info:
+  title: Smart House API
+  description: |
+    Синхронный REST API умного дома (через API Gateway).
+    Асинхронные события (телеметрия, изменения состояния устройств) идут через
+    брокер и описываются отдельно в AsyncAPI.
+  version: 1.0.0
+
+paths:
+  /devices:
+    post:
+      summary: Зарегистрировать устройство
+      description: Регистрирует новое устройство в доме (DeviceManager). Выдаёт id и топик брокера.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceRegister'
+      responses:
+        '201':
+          description: Устройство зарегистрировано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '400':
+          description: Некорректные данные запроса
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервиса
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    get:
+      summary: Список устройств пользователя
+      description: Возвращает все устройства текущего пользователя вместе с их текущим состоянием.
+      responses:
+        '200':
+          description: Список устройств
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+        '500':
+          description: Внутренняя ошибка сервиса
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /devices/{id}:
+    get:
+      summary: Получить устройство
+      description: Возвращает информацию об устройстве (DeviceManager).
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Информация об устройстве
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '404':
+          description: Устройство не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /devices/{id}/state:
+    get:
+      summary: Текущее состояние устройства
+      description: Возвращает последнюю телеметрию устройства (Telemetry).
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Текущее состояние
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceState'
+              example:
+                device_id: 42
+                battery: 87.5
+                status: "opened"
+                recorded_at: "2026-07-10T15:30:00Z"
+        '404':
+          description: Устройство не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /devices/{id}/commands:
+    post:
+      summary: Отправить команду устройству
+      description: |
+        Принимает команду, валидирует и публикует в брокер (BaseDeviceControl).
+        Команда выполняется асинхронно — ответ 202, финальный статус узнаётся через
+        GET /devices/{id}/state.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Command'
+            example:
+              command: "open"
+              params: {}
+      responses:
+        '202':
+          description: Команда принята в обработку (выполнится асинхронно)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandAccepted'
+              example:
+                command_id: "cmd_a1b2c3"
+                status: "opening"
+        '400':
+          description: Невалидная команда для данного типа устройства
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Устройство не найдено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Внутренняя ошибка сервиса
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /scenarios:
+    post:
+      summary: Создать сценарий
+      description: Создаёт пользовательский сценарий автоматизации (Scenarios).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScenarioInput'
+      responses:
+        '201':
+          description: Сценарий создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Scenario'
+        '400':
+          description: Некорректные данные сценария
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /scenarios/{id}:
+    put:
+      summary: Обновить сценарий
+      description: Полностью обновляет существующий сценарий по id.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScenarioInput'
+      responses:
+        '200':
+          description: Сценарий обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Scenario'
+        '404':
+          description: Сценарий не найден
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+components:
+  parameters:
+    DeviceId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор устройства
+      schema: { type: integer }
+
+  schemas:
+    DeviceRegister:
+      type: object
+      required: [house_id, device_type_id, serial_number]
+      properties:
+        house_id: { type: integer, example: 7 }
+        device_type_id: { type: integer, example: 3 }
+        model: { type: string, example: "Thermo-X200" }
+        serial_number: { type: string, example: "SN-000123" }
+
+    Device:
+      type: object
+      properties:
+        id: { type: integer, example: 42 }
+        house_id: { type: integer, example: 7 }
+        device_type_id: { type: integer, example: 3 }
+        model: { type: string, example: "Thermo-X200" }
+        version: { type: string, example: "1.4.0" }
+        status: { type: string, example: "active" }
+        created_at: { type: string, format: date-time }
+
+    DeviceState:
+      type: object
+      properties:
+        device_id: { type: integer, example: 42 }
+        battery: { type: number, format: float, example: 87.5 }
+        status: { type: string, example: "opened" }
+        recorded_at: { type: string, format: date-time }
+
+    Command:
+      type: object
+      required: [command]
+      properties:
+        command:
+          type: string
+          description: Команда устройству
+          example: "open"
+        params:
+          type: object
+          description: Параметры команды (напр. целевая температура)
+          example: { target_temp: 22 }
+
+    CommandAccepted:
+      type: object
+      properties:
+        command_id: { type: string, example: "cmd_a1b2c3" }
+        status: { type: string, example: "opening" }
+
+    ScenarioAction:
+      type: object
+      properties:
+        device_id: { type: integer, example: 42 }
+        command: { type: string, example: "close" }
+
+    ScenarioInput:
+      type: object
+      required: [name, actions]
+      properties:
+        name: { type: string, example: "Вечерний режим" }
+        trigger: { type: string, example: "time>=19:00" }
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioAction'
+
+    Scenario:
+      allOf:
+        - $ref: '#/components/schemas/ScenarioInput'
+        - type: object
+          properties:
+            id: { type: integer, example: 11 }
+            user_id: { type: integer, example: 5 }
+
+    Error:
+      type: object
+      properties:
+        code: { type: string, example: "DEVICE_NOT_FOUND" }
+        message: { type: string, example: "Устройство не найдено" }
