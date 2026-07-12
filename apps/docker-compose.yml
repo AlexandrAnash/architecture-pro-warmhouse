@@ -4,10 +4,34 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: smarthome-postgres
-  ## тут нужно добавить настройки
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: smarthome
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./smart_home/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - smarthome-network
+
 
   temperature-api:
-  ## тут нужно добавить приложение
+    build:
+      context: ./temperature-api
+      dockerfile: Dockerfile
+    container_name: temperature-api
+    ports:
+      - "8081:8081"
+    networks:
+      - smarthome-network
+
 
   app:
     build:
@@ -24,6 +48,92 @@ services:
       - TEMPERATURE_API_URL=http://temperature-api:8081
     ports:
       - "8080:8080"
+    restart: unless-stopped
+    networks:
+      - smarthome-network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: smarthome-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: smarthome
+      RABBITMQ_DEFAULT_PASS: smarthome
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+      - "15674:15674"      # Web-STOMP (WebSocket)
+    networks:
+      - smarthome-network
+  
+  device-manager:
+    build:
+      context: ./device-manager
+      dockerfile: Dockerfile
+    container_name: device-manager
+    ports:
+      - "8082:8082"
+    networks:
+      - smarthome-network
+
+  telemetry:
+    build:
+      context: ./telemetry
+      dockerfile: Dockerfile
+    container_name: telemetry
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - PORT=8083
+    ports:
+      - "8083:8083"
+    restart: unless-stopped
+    networks:
+      - smarthome-network
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: gateway
+    depends_on:
+      - app
+      - temperature-api
+      - device-manager
+      - telemetry
+    ports:
+      - "8000:80"
+    restart: unless-stopped
+    networks:
+      - smarthome-network
+
+  sensor-fe:
+    build:
+      context: ./sensor-fe
+      dockerfile: Dockerfile
+    container_name: sensor-fe
+    ports:
+      - "8085:80"
+    restart: unless-stopped
+    networks:
+      - smarthome-network
+
+  dashboard-fe:
+    build:
+      context: ./dashboard-fe
+      dockerfile: Dockerfile
+    container_name: dashboard-fe
+    depends_on:
+      - gateway
+    ports:
+      - "8086:80"
     restart: unless-stopped
     networks:
       - smarthome-network

@@ -1,0 +1,69 @@
+@startuml
+title Smart Home Container Diagram
+top to bottom direction
+
+
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(User, "User", "Пользователь умного дома")
+
+System_Boundary(c1, "Smart home") {
+    Container(WebContainer, "Web/touch (Frontend)", "Интерфейс с которым взаимодействует пользователь")
+    Container(APIGatewayContainer, "API Gateway", "Сервис маршрутизирует запросы по нашим внутренним сервисам.")
+    Container(AccountContainer, "Account", "Сервис отвечает за авторизацию и информацию о доме/пользователе")
+    ContainerDb(AccountDB, "AccountDB", "Хранит данные для Account сервиса")
+
+    Container(DeviceManagerContainer, "DeviceManager", "Сервис отвечает за регистрацию девайсов и выдачу id")
+    ContainerDb(DeviceManagerDB, "DeviceManagerDB", "Хранит данные девайсов")
+
+    Container(TelemetryContainer, "Telemetry", "Сервис отвечает за состояние девайсов")
+    ContainerDb(TelemetryDB, "TelemetryDB", "Хранит данные состояния девайсов, телеметрию")
+
+    Container(BaseDeviceControlContainer, "BaseDeviceControl", "Сервис отвечает за управление устройствами: отправку команд датчикам, работу с разными типами датчиков, валидацию")
+
+    Container(StreamingControlContainer, "StreamingControl", "Сервис отвечает за управление камерами")
+    ContainerDb(StreamingControlDB, "StreamingControlDB", "Хранит запись 30 дней в S3")
+
+    Container(ScenariosContainer, "Scenarios", "Сервис отвечает за пользовательские сценарии управления")
+    ContainerDb(ScenariosDB, "ScenariosDB", "Хранит сценарии")
+
+    ContainerQueue(BrokerQueue, "BrokerQueue", "Держит соединения с устройствами, принимает сообщения с устройств регистрирует подписки с сервисов и отправляет им новые события с устройств")
+}
+System_Ext(Ext_KnownDevices, "Известные устройства", "Датчики: отопления, света, отпирания ворот")
+System_Ext(Ext_StreamingDevices, "Стриминговые устройства", "Камеры")
+System_Ext(Ext_UnknownDevices, "Неизвестные устройства", "Устройства со стандартными протоколами но не известные нашей системе")
+Rel(User, WebContainer, "Управляет умным домом")
+Rel(WebContainer, APIGatewayContainer, "Взаимодействует с API", "HTTPS")
+
+Rel(APIGatewayContainer, AccountContainer, "Запросы для авторизации")
+Rel(APIGatewayContainer, DeviceManagerContainer, "Регистрация устройств")
+Rel(APIGatewayContainer, BaseDeviceControlContainer, "Управление подключенными устройствами девайсами")
+Rel(APIGatewayContainer, StreamingControlContainer, "Управление стриминговыми девайсами")
+Rel(APIGatewayContainer, ScenariosContainer, "Управление сценариями")
+
+Rel(AccountContainer, AccountDB, "Чтение и запись аккаунтов и сессий", "SQL")
+Rel(DeviceManagerContainer, DeviceManagerDB, "Чтение и запись подключенных устройств", "SQL")
+Rel(StreamingControlContainer, StreamingControlDB, "Храним записи 30 дней", "S3")
+Rel_R(ScenariosContainer, ScenariosDB, "Чтение и запись сценариев", "SQL")
+Rel(TelemetryContainer, TelemetryDB, "Чтение и запись состояния датчиков (нагруженная)", "SQL")
+
+Rel(BaseDeviceControlContainer, DeviceManagerContainer, "Считываем данные зарегистрированных устройств")
+Rel(StreamingControlContainer, DeviceManagerContainer, "Считываем данные зарегистрированных устройств")
+Rel(ScenariosContainer, DeviceManagerContainer, "Считываем данные зарегистрированных устройств")
+Rel(TelemetryContainer, DeviceManagerContainer, "Считываем данные зарегистрированных устройств")
+
+Rel(ScenariosContainer, TelemetryContainer, "Получаем актуальное состояние датчиков")
+Rel(ScenariosContainer, BaseDeviceControlContainer, "Управляем конкретными датчиками, автоматика по сценариям")
+
+Rel(BrokerQueue, BaseDeviceControlContainer, "Отклик от устройства: выполнил/не выполнил")
+Rel(BaseDeviceControlContainer, BrokerQueue, "Отправляем команды устройствам")
+Rel(BrokerQueue, TelemetryContainer, "Считать из очереди данные телеметрии")
+
+BiRel_U(Ext_KnownDevices, BrokerQueue, "Оповещает о выполнении команды или установкой пользователем для известных устройств", "MQTT")
+BiRel_U(Ext_UnknownDevices, BrokerQueue, "Оповещает о выполнении команды или установкой пользователем для остальных устройств", "MQTT")
+
+Rel_D(Ext_StreamingDevices, StreamingControlContainer, "Считать стриминг с камер", "HTTPS")
+Rel_U(StreamingControlContainer, Ext_StreamingDevices, "управлять камерой: повернуть, вкл/выкл", "HTTPS")
+
+
+@enduml

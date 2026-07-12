@@ -1,0 +1,61 @@
+@startuml
+title Smart Home. Base Device Service Code Diagram
+
+autonumber
+actor       Пользователь            as User
+participant "API Gateway"           as GW
+participant "Controller"            as Ctrl
+participant "BaseDeviceService"     as BaseSvc
+participant "DeviceManagerClient"   as DMClient
+participant "DeviceManager"         as DM
+participant "ValidationService"     as ValidSvc
+participant "BrokerClient"          as BClient
+queue       "BrokerQueue"           as Broker
+participant "Ворота"                as Gate
+participant "Telemetry"             as Telemetry
+
+User -> GW : HTTPS POST /command/gate (id, command)
+activate GW
+GW -> Ctrl : handleCommand (id, command)
+activate Ctrl
+Ctrl -> BaseSvc : handleCommand (id, command)
+activate BaseSvc
+BaseSvc -> DMClient : getDevice (id)
+activate DMClient
+DMClient -> DM: getDevice (id)
+activate DM
+DM --> DMClient: {model, version}
+deactivate DM
+DMClient --> BaseSvc: {model, version}
+deactivate DMClient
+BaseSvc -> ValidSvc: check {id, model, version, command}
+activate ValidSvc
+ValidSvc --> BaseSvc: OK
+deactivate ValidSvc
+BaseSvc ->> BClient: setCommand (id, command)
+activate BClient
+BClient ->> Broker: publish topic=commands/gate/{id})
+activate Broker
+deactivate BClient
+BaseSvc -> Ctrl: send status
+deactivate BaseSvc
+Ctrl -> GW: response: { status: opening }
+deactivate Ctrl
+GW -> User: response: { status: opening }
+deactivate GW
+== Асинхронная часть ==
+Broker ->> Gate : доставка команды open
+activate Gate
+Gate -> Gate : открывает ворота
+Gate ->> Broker: event opened
+Broker ->> Telemetry : event opened
+Telemetry -> Telemetry : сохраняет состояние "opened"
+
+loop пока status != opened
+    User -> GW : GET /devices/{id}/state
+    GW -> Telemetry : getState(id)
+    Telemetry --> GW : { status }
+    GW --> User : { status: opening | opened }
+end
+
+@enduml

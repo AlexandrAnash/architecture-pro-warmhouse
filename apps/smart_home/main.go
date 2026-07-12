@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"smarthome/broker"
 	"smarthome/db"
 	"smarthome/handlers"
 	"smarthome/services"
@@ -26,6 +27,13 @@ func main() {
 	defer database.Close()
 
 	log.Println("Connected to database successfully")
+
+	pub, err := broker.NewPublisher(getEnv("RABBITMQ_URL", "amqp://smarthome:smarthome@rabbitmq:5672/"))
+	if err != nil {
+		log.Printf("RabbitMQ недоступен, работаем без публикации: %v", err) // НЕ Fatal!
+	}
+
+	log.Println("Connected to RabbitMQ successfully")
 
 	// Initialize temperature service
 	temperatureAPIURL := getEnv("TEMPERATURE_API_URL", "http://temperature-api:8081")
@@ -46,7 +54,7 @@ func main() {
 	apiRoutes := router.Group("/api/v1")
 
 	// Register sensor routes
-	sensorHandler := handlers.NewSensorHandler(database, temperatureService)
+	sensorHandler := handlers.NewSensorHandler(database, temperatureService, pub)
 	sensorHandler.RegisterRoutes(apiRoutes)
 
 	// Start server

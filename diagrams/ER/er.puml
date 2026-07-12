@@ -1,0 +1,75 @@
+@startuml
+title Smart Home. ER Diagram
+
+hide circle
+skinparam linetype ortho
+
+entity User {
+    * id : int <<PK>>
+    --
+    name : varchar
+    age : int
+    phone : varchar
+}
+
+entity House {
+    * id : int <<PK>>
+    --
+    user_id <<FK>>
+    address: varchar
+    type: varchar
+    area: varchar
+}
+
+entity DeviceType {
+    * id : int <<PK>>
+    --
+    name: varchar
+    type: varchar
+    created_at : timestamp
+}
+entity Device {
+    * id : int <<PK>>
+    --
+    * house_id : int <<FK>>
+    device_type_id: int <<FK>>
+    model: varchar
+    version: varchar
+    created_at : timestamp
+}
+
+entity TelemetryData {
+    * id : int <<PK>>
+    --
+    * device_id : int <<FK>>
+    battery : decimal
+    status : varchar
+    created_at : timestamp
+}
+
+entity ScenarioDevice  {
+    * id : int <<PK>>
+    --
+    * device_id : int <<FK>>
+    * scenario_id <<FK>>
+    command : varchar
+}
+
+entity Scenario {
+    * id : int <<PK>>
+    --
+    * user_id <<FK>>
+    name: varchar
+    schedule : timestamp
+    trigger : varchar
+}
+
+
+User ||--o{ House
+House ||--o{ Device
+DeviceType ||--o{ Device
+Device ||--o{ TelemetryData
+Device ||--o{ ScenarioDevice
+Scenario ||--o{ ScenarioDevice
+User ||--o{ Scenario
+@enduml

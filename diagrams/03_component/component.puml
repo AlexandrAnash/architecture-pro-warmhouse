@@ -1,0 +1,32 @@
+@startuml
+title Smart Home. Base Device Control Diagram
+top to bottom direction
+
+
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+
+Container(APIGatewayContainer, "API Gateway", "Сервис маршрутизирует запросы по нашим внутренним сервисам.")
+Container(ScenariosContainer, "Scenarios", "Сервис отвечает за пользовательские сценарии управления")
+Container_Boundary(c2, "BaseDeviceControl") {
+    Component(Controller, "Controller", "Запросы для управления подключенными девайсами")
+    Component(BaseDeviceService, "BaseDeviceService", "Обработка запросов для управления девайсами.")
+    Component(ValidationService, "ValidationService", "Валидация команд, различные ограничения")
+    Component(BrokerClient, "BrokerClient", "Отправка команд брокеру и подписка на нужные команды")
+    Component(DeviceManagerClient, "DeviceManagerClient", "Получает данные зарегистрированных устройств")
+
+}
+Container(DeviceManagerContainer, "DeviceManager", "Сервис отвечает за регистрацию девайсов и выдачу id")
+ContainerQueue(BrokerQueue, "BrokerQueue", "Держит соединения с устройствами, принимает сообщения с устройств регистрирует подписки с сервисов и отправляет им новые события с устройств")
+
+Rel(ScenariosContainer, Controller, "Выполнить определенные команды по сценарию", "REST")
+Rel(APIGatewayContainer, Controller, "Запрос от пользователя для взаимодействия с девайсами", "REST")
+Rel(Controller, BaseDeviceService, "Обрабатывает входящие запросы")
+Rel(BaseDeviceService, ValidationService, "Валидация выполнения команд на устройстве")
+Rel(BaseDeviceService, BrokerClient, "Отправить команду устройству")
+Rel(BaseDeviceService, DeviceManagerClient, "Получить данные зарегистрированного устройства")
+
+Rel(BrokerClient, BrokerQueue, "Отправить команду устройству", "MQTT")
+Rel(DeviceManagerClient, DeviceManagerContainer, "Получить данные устройства", "REST")
+
+@enduml
