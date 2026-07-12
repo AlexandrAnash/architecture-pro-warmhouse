@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main, warmhouse]
+    branches: [main, warmhouse, deploy-branch]
   pull_request:
 
 concurrency:                                   # отменять устаревшие запуски той же ветки
