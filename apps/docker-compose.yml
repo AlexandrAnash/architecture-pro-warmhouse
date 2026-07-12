@@ -63,9 +63,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    volumes:
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
     ports:
       - "5672:5672"
       - "15672:15672"
+      - "15674:15674"      # Web-STOMP (WebSocket)
     networks:
       - smarthome-network
   
@@ -76,6 +79,49 @@ services:
     container_name: device-manager
     ports:
       - "8082:8082"
+    networks:
+      - smarthome-network
+
+  telemetry:
+    build:
+      context: ./telemetry
+      dockerfile: Dockerfile
+    container_name: telemetry
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - PORT=8083
+    ports:
+      - "8083:8083"
+    restart: unless-stopped
+    networks:
+      - smarthome-network
+
+  sensor-fe:
+    build:
+      context: ./sensor-fe
+      dockerfile: Dockerfile
+    container_name: sensor-fe
+    ports:
+      - "8085:80"
+    restart: unless-stopped
+    networks:
+      - smarthome-network
+
+  dashboard-fe:
+    build:
+      context: ./dashboard-fe
+      dockerfile: Dockerfile
+    container_name: dashboard-fe
+    depends_on:
+      - app
+      - temperature-api
+      - device-manager
+      - telemetry
+    ports:
+      - "8086:80"
+    restart: unless-stopped
     networks:
       - smarthome-network
 
