@@ -4,9 +4,11 @@ WORKDIR /app
 
 COPY package.json ./
 
-RUN npm install
+RUN npm ci
 
 COPY . .
+
+USER node
 
 EXPOSE 8081
 

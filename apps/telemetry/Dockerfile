@@ -16,9 +16,11 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install --omit=dev
+RUN npm ci
 
 COPY --from=builder /app/dist ./dist
+
+USER node
 
 EXPOSE 8082
 

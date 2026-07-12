@@ -22,12 +22,15 @@ FROM alpine:latest
 # Install necessary runtime dependencies
 RUN apk --no-cache add ca-certificates tzdata
 
+RUN adduser -D -u 10001 appuser
+
 # Set working directory
 WORKDIR /app
 
 # Copy the binary from the builder stage
 COPY --from=builder /app/smarthome .
 
+USER appuser
 # Expose the port the app runs on
 EXPOSE 8080
 
