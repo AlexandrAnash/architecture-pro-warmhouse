@@ -7,12 +7,14 @@ import type {
   TemperatureReading,
 } from './types'
 
-// Префиксы reverse-proxy (nginx в проде / Vite dev-proxy). См. vite.config.ts и nginx.conf.
+// Единая точка входа — API Gateway (nginx, :8000). Маршрутизация и CORS — на его стороне.
+const GATEWAY = 'http://localhost:8000'
+
 const SVC = {
-  smarthome: '/svc/smarthome',
-  temperature: '/svc/temperature',
-  devices: '/svc/device-manager',
-  telemetry: '/svc/telemetry',
+  smarthome: `${GATEWAY}/svc/smarthome`,
+  temperature: `${GATEWAY}/svc/temperature`,
+  devices: `${GATEWAY}/svc/device-manager`,
+  telemetry: `${GATEWAY}/svc/telemetry`,
 } as const
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {

@@ -240,6 +240,8 @@ Locations - название комнаты, sensorId - идентификато
 	- доступен http://localhost:8082/devices
 - broker через RabbitMQ
 	- доступен тут http://localhost:15672/#/connections
+- gateway для фронтендов
+	- http://localhost:8000/svc/telemetry/telemetry
 - нагенерил фронтенд с эмитацией посылки показания датчиков (напрямую в брокер)
 	- доступен http://localhost:8085
 - нагенерил фронтенд с запросами (чтобы удобно было смотреть через UI, а не постман)

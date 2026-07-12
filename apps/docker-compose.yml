@@ -98,6 +98,22 @@ services:
     networks:
       - smarthome-network
 
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: gateway
+    depends_on:
+      - app
+      - temperature-api
+      - device-manager
+      - telemetry
+    ports:
+      - "8000:80"
+    restart: unless-stopped
+    networks:
+      - smarthome-network
+
   sensor-fe:
     build:
       context: ./sensor-fe
@@ -115,10 +131,7 @@ services:
       dockerfile: Dockerfile
     container_name: dashboard-fe
     depends_on:
-      - app
-      - temperature-api
-      - device-manager
-      - telemetry
+      - gateway
     ports:
       - "8086:80"
     restart: unless-stopped
