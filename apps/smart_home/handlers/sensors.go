@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"smarthome/broker"
 	"smarthome/db"
 	"smarthome/models"
 	"smarthome/services"
@@ -18,13 +19,15 @@ import (
 type SensorHandler struct {
 	DB                 *db.DB
 	TemperatureService *services.TemperatureService
+	Publisher          *broker.Publisher
 }
 
 // NewSensorHandler creates a new SensorHandler
-func NewSensorHandler(db *db.DB, temperatureService *services.TemperatureService) *SensorHandler {
+func NewSensorHandler(db *db.DB, temperatureService *services.TemperatureService, publisher *broker.Publisher) *SensorHandler {
 	return &SensorHandler{
 		DB:                 db,
 		TemperatureService: temperatureService,
+		Publisher:          publisher,
 	}
 }
 
@@ -141,6 +144,9 @@ func (h *SensorHandler) CreateSensor(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Публикуем событие о создании сенсора (best-effort — не влияет на ответ клиенту)
+	h.Publisher.Publish("sensor.created", sensor)
 
 	c.JSON(http.StatusCreated, sensor)
 }

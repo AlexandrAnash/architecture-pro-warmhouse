@@ -52,6 +52,33 @@ services:
     networks:
       - smarthome-network
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: smarthome-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: smarthome
+      RABBITMQ_DEFAULT_PASS: smarthome
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - smarthome-network
+  
+  device-manager:
+    build:
+      context: ./device-manager
+      dockerfile: Dockerfile
+    container_name: device-manager
+    ports:
+      - "8082:8082"
+    networks:
+      - smarthome-network
+
 volumes:
   postgres_data:
 
