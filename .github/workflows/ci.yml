@@ -44,6 +44,7 @@ jobs:
           image-ref: ${{ env.IMAGE }}:${{ github.sha }}
           severity: CRITICAL,HIGH          # падаем только на серьёзных
           ignore-unfixed: true             # не валимся на то, для чего нет фикса
+          trivyignores: .trivyignore       # список осознанно подавленных CVE
           exit-code: '1'                   # ← findings → job падает → push не будет
 
       - name: Push (только если скан прошёл)
