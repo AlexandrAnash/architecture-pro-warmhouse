@@ -26,8 +26,11 @@ const STATE_LABEL: Record<string, string> = {
 }
 
 export default function App() {
-  // соединение
-  const [url, setUrl] = useState('ws://localhost:15674/ws')
+  // соединение — WS на СВОЙ origin: nginx фронта проксирует /ws в RabbitMQ Web-STOMP.
+  // Дефолт вычисляем из адреса страницы: работает на любом хосте (и wss поверх https).
+  const [url, setUrl] = useState(
+    () => `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`,
+  )
   const [login, setLogin] = useState('smarthome')
   const [passcode, setPasscode] = useState('smarthome')
 

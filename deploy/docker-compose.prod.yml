@@ -1,0 +1,122 @@
+# Prod-compose для деплоя на VPS.
+# Образы НЕ собираются здесь — тянутся из Yandex Container Registry по иммутабельному тегу.
+#   ${YC_REGISTRY_ID} и секреты приходят из окружения, которое CD инъектирует по SSH
+#   ${IMAGE_TAG}      = git SHA, передаётся из CD на каждый деплой (дефолт latest — для ручного запуска)
+#
+# Принцип: наружу торчит только то, что реально нужно клиенту (gateway, фронты, Web-STOMP).
+# Postgres, RabbitMQ-AMQP, монолит и микросервисы слушают только внутреннюю сеть.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: smarthome-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: smarthome
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks: [smarthome-network]
+    restart: unless-stopped
+    # порт 5432 НЕ публикуется — БД доступна только сервисам во внутренней сети
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: smarthome-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-smarthome}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-smarthome}
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - ./enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    # Наружу НЕ публикуем ничего: AMQP (5672), management (15672) и Web-STOMP (15674)
+    # доступны только во внутренней сети. Браузер ходит в Web-STOMP через nginx sensor-fe (/ws).
+    networks: [smarthome-network]
+    restart: unless-stopped
+
+  temperature-api:
+    image: cr.yandex/${YC_REGISTRY_ID}/temperature-api:${IMAGE_TAG:-latest}
+    container_name: temperature-api
+    networks: [smarthome-network]
+    restart: unless-stopped
+
+  app:
+    image: cr.yandex/${YC_REGISTRY_ID}/smart_home:${IMAGE_TAG:-latest}
+    container_name: smarthome-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temperature-api:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/smarthome
+      - TEMPERATURE_API_URL=http://temperature-api:8081
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-smarthome}:${RABBITMQ_PASS:-smarthome}@rabbitmq:5672/
+    networks: [smarthome-network]
+    restart: unless-stopped
+
+  device-manager:
+    image: cr.yandex/${YC_REGISTRY_ID}/device-manager:${IMAGE_TAG:-latest}
+    container_name: device-manager
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks: [smarthome-network]
+    restart: unless-stopped
+
+  telemetry:
+    image: cr.yandex/${YC_REGISTRY_ID}/telemetry:${IMAGE_TAG:-latest}
+    container_name: telemetry
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - PORT=8083
+    networks: [smarthome-network]
+    restart: unless-stopped
+
+  gateway:
+    image: cr.yandex/${YC_REGISTRY_ID}/gateway:${IMAGE_TAG:-latest}
+    container_name: gateway
+    depends_on: [app, temperature-api, device-manager, telemetry]
+    ports:
+      - "8000:80"          # публичная точка входа для API (/svc/*)
+    networks: [smarthome-network]
+    restart: unless-stopped
+
+  sensor-fe:
+    image: cr.yandex/${YC_REGISTRY_ID}/sensor-fe:${IMAGE_TAG:-latest}
+    container_name: sensor-fe
+    depends_on: [rabbitmq]          # nginx фронта проксирует /ws в rabbitmq:15674
+    ports:
+      - "8085:80"
+    networks: [smarthome-network]
+    restart: unless-stopped
+
+  dashboard-fe:
+    image: cr.yandex/${YC_REGISTRY_ID}/dashboard-fe:${IMAGE_TAG:-latest}
+    container_name: dashboard-fe
+    depends_on: [gateway]
+    ports:
+      - "8086:80"
+    networks: [smarthome-network]
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  smarthome-network:
+    driver: bridge

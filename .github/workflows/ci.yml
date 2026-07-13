@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [smart_home, temperature-api, device-manager, telemetry, sensor-fe, dashboard-fe]
+        service: [smart_home, temperature-api, device-manager, telemetry, gateway, sensor-fe, dashboard-fe]
     env:
       IMAGE: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/${{ matrix.service }}
     steps:
@@ -52,3 +52,79 @@ jobs:
           docker push ${{ env.IMAGE }}:${{ github.sha }}
           docker tag  ${{ env.IMAGE }}:${{ github.sha }} ${{ env.IMAGE }}:latest
           docker push ${{ env.IMAGE }}:latest
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # CD: деплой на VPS по SSH. Стартует только если ВСЕ образы собрались,
+  # прошли Trivy-гейт и запушились. Деплоим по иммутабельному тегу = git SHA.
+  # Все секреты — из GitHub Secrets; на сервере ничего не хранится
+  # (ни .env, ни docker-креды: логин по stdin, logout после pull).
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/deploy-branch'
+    concurrency:                             # не допускаем два параллельных деплоя на один сервер
+      group: deploy-vps
+      cancel-in-progress: false
+    env:
+      SSH_TARGET: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Подготовить SSH на раннере
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          # Проверка ключа хоста: пиннинг из секрета (правильно) или keyscan (TOFU) как запасной вариант
+          if [ -n "${{ secrets.VPS_SSH_KNOWN_HOSTS }}" ]; then
+            echo "${{ secrets.VPS_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "${{ secrets.VPS_HOST }}" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Доставить compose и конфиги на сервер (rsync)
+        # только рантайм-конфиги; секретов в этих файлах нет
+        run: |
+          ssh -i ~/.ssh/id_deploy "$SSH_TARGET" 'mkdir -p /opt/smarthome'
+          rsync -az -e "ssh -i ~/.ssh/id_deploy" \
+            deploy/docker-compose.prod.yml \
+            apps/smart_home/init.sql \
+            apps/rabbitmq/enabled_plugins \
+            "$SSH_TARGET:/opt/smarthome/"
+
+      - name: Логин в Yandex CR на сервере (ключ по stdin, без записи в argv)
+        run: |
+          echo '${{ secrets.YC_SA_JSON_KEY }}' | \
+            ssh -i ~/.ssh/id_deploy "$SSH_TARGET" \
+              'docker login cr.yandex --username json_key --password-stdin'
+
+      - name: Развернуть новую версию
+        run: |
+          ssh -i ~/.ssh/id_deploy "$SSH_TARGET" \
+            "YC_REGISTRY_ID='${{ secrets.YC_REGISTRY_ID }}' \
+             IMAGE_TAG='${{ github.sha }}' \
+             POSTGRES_PASSWORD='${{ secrets.POSTGRES_PASSWORD }}' \
+             RABBITMQ_USER='${{ secrets.RABBITMQ_USER }}' \
+             RABBITMQ_PASS='${{ secrets.RABBITMQ_PASS }}' \
+             bash -euo pipefail -s" <<'REMOTE'
+          cd /opt/smarthome
+          docker compose -f docker-compose.prod.yml pull
+          docker compose -f docker-compose.prod.yml up -d --remove-orphans
+          docker logout cr.yandex          # креды на сервере не оставляем
+          docker image prune -f
+          REMOTE
+
+      - name: Smoke-check (gateway → telemetry отвечает)
+        run: |
+          ssh -i ~/.ssh/id_deploy "$SSH_TARGET" bash -s <<'REMOTE'
+          for i in $(seq 1 10); do
+            if curl -fsS -o /dev/null http://localhost:8000/svc/telemetry/telemetry; then
+              echo "OK: стек поднялся"; exit 0
+            fi
+            echo "ждём готовности сервисов ($i/10)…"; sleep 6
+          done
+          echo "FAIL: сервисы не ответили"; docker compose -f /opt/smarthome/docker-compose.prod.yml ps
+          exit 1
+          REMOTE

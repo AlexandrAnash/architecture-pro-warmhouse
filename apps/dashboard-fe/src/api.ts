@@ -7,8 +7,9 @@ import type {
   TemperatureReading,
 } from './types'
 
-// Единая точка входа — API Gateway (nginx, :8000). Маршрутизация и CORS — на его стороне.
-const GATEWAY = 'http://localhost:8000'
+// Ходим относительными URL на СВОЙ origin — nginx этого фронта проксирует /svc/* в gateway.
+// Никаких захардкоженных хостов: работает в любом окружении, без CORS и без preflight.
+const GATEWAY = ''
 
 const SVC = {
   smarthome: `${GATEWAY}/svc/smarthome`,
