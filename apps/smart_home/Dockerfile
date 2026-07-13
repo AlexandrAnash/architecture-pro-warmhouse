@@ -1,6 +1,8 @@
 # Build stage
 FROM golang:1.22-alpine AS builder
 
+RUN apk upgrade --no-cache
+
 # Set working directory
 WORKDIR /app
 
@@ -18,6 +20,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o smarthome
 
 # Runtime stage
 FROM alpine:latest
+
+RUN apk upgrade --no-cache
 
 # Install necessary runtime dependencies
 RUN apk --no-cache add ca-certificates tzdata
