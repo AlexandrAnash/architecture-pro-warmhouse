@@ -6,7 +6,9 @@ const NAME_QUEUE = 'telemetry-queue';
 async function connectWithRetry(retries = 10, delayMs = 3000) {
     for (let i = 0; i < retries; i++) {
         try { 
-            const connected = await amqplib.connect('amqp://smarthome:smarthome@rabbitmq:5672');
+            const connected = await amqplib.connect(
+                process.env.RABBITMQ_URL || 'amqp://smarthome:smarthome@rabbitmq:5672'
+            );
             console.log('✅ telemetry соединилась с RabbitMQ')
             
             return connected;
